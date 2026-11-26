@@ -12,6 +12,10 @@ services:
     env_file: .env
     environment:
       REDIS_HOST: redis
+      HEALTH_PORT: "8001"
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
     depends_on: [redis]
     networks: [airbreda]
 
@@ -23,6 +27,10 @@ services:
     env_file: .env
     environment:
       REDIS_HOST: redis
+      HEALTH_PORT: "8002"
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
     depends_on: [redis]
     networks: [airbreda]
 
