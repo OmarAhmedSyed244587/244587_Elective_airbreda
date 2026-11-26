@@ -34,6 +34,7 @@ from dotenv import load_dotenv
 load_dotenv()  # reads PG* settings from .env so the database write switches on
 
 import jsonlog
+import health
 
 STATION = "NL10240"
 BASE_URL = f"https://api.luchtmeetnet.nl/open_api/stations/{STATION}/measurements"
@@ -53,6 +54,8 @@ log = logging.getLogger("ingest_air")
 
 # In-memory counter of bad readings seen by this process (read by /health).
 luchtmeetnet_bad_data_count = 0
+HEALTH = health.SourceHealth("Luchtmeetnet", lambda: luchtmeetnet_bad_data_count)
+POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "3600"))  # hourly, see the polling comment above
 
 
 class AirDataError(Exception):
@@ -125,6 +128,7 @@ def report_data_quality(df: pd.DataFrame) -> int:
     flagged = df[(df["component"] == "NO2") & (df["is_flagged"])]
     for row in flagged.itertuples():
         luchtmeetnet_bad_data_count += 1
+        HEALTH.record_bad()
         jsonlog.event(log, logging.WARNING, "DATA_QUALITY_ERROR", source="Luchtmeetnet",
                       station_id=STATION, field="NO2", reason="stale_or_null",
                       value=None if pd.isna(row.value) else float(row.value),
@@ -185,6 +189,7 @@ def main() -> int:
                   value=None if pd.isna(newest["value"]) else float(newest["value"]),
                   timestamp=newest["timestamp"].strftime("%Y-%m-%dT%H:%M:%SZ"))
 
+    HEALTH.fetch_ok()
     report_data_quality(no2)
 
     # Lab 2: if a database is configured, store ALL pollutants idempotently
@@ -223,6 +228,20 @@ def main() -> int:
     print(f"Value:     {newest['value']} ug/m3")
     return 0
 
+def run_forever() -> None:
+    """Service mode: serve /health and repeat the job every POLL_SECONDS."""
+    jsonlog.setup()
+    health.serve(HEALTH, int(os.environ.get("HEALTH_PORT", "8001")))
+    while True:
+        try:
+            main()
+        except Exception as exc:  # one bad run must never kill the service
+            jsonlog.event(log, logging.ERROR, "run_failed", source="Luchtmeetnet", error=str(exc))
+        time.sleep(POLL_SECONDS)
+
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if "--serve" in sys.argv:
+        run_forever()
+    else:
+        sys.exit(main())

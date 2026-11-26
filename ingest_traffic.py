@@ -33,7 +33,6 @@ import io
 import logging
 import os
 import sys
-import sys
 import time
 from datetime import timezone
 from datetime import datetime
@@ -45,8 +44,8 @@ from helper_scripts import getTrafficReadings as ndw
 
 load_dotenv()
 
-import jsonlog
 import health
+import jsonlog
 
 log = logging.getLogger("ingest_traffic")
 
@@ -193,16 +192,29 @@ def append_history(row, history=None):
 
 
 def upload_to_blob(path, base=OUTPUT_DIR):
-    """Upload to Azure Blob Storage if configured; otherwise skip quietly."""
+    """Upload to Azure Blob Storage if configured; otherwise skip quietly.
+
+    Two ways to authenticate, no secret needed on the VM:
+      * AZURE_STORAGE_ACCOUNT_URL: use the VM's managed identity (production).
+      * AZURE_STORAGE_CONNECTION_STRING: a key, only for running on a laptop.
+    """
     conn = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-    if not conn:
+    account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
+    if not conn and not account_url:
         jsonlog.event(log, logging.INFO, "blob_upload_skipped", path=str(path))
         return False
     from azure.storage.blob import BlobServiceClient  # imported lazily
 
+    if conn:
+        service = BlobServiceClient.from_connection_string(conn)
+    else:
+        from azure.identity import DefaultAzureCredential
+
+        service = BlobServiceClient(account_url, credential=DefaultAzureCredential())
+
     container = os.environ.get("AZURE_STORAGE_CONTAINER", "airbreda")
     blob_name = "ndw/" + path.relative_to(base).as_posix()
-    client = BlobServiceClient.from_connection_string(conn).get_blob_client(container, blob_name)
+    client = service.get_blob_client(container, blob_name)
     with open(path, "rb") as fh:
         client.upload_blob(fh, overwrite=True)
     jsonlog.event(log, logging.INFO, "blob_uploaded", blob=blob_name)
@@ -217,7 +229,7 @@ def main():
     except Exception as exc:  # network, gzip or HTTP problems
         jsonlog.event(log, logging.ERROR, "fetch_failed", source="NDW", error=str(exc))
         return 1
-    
+
     HEALTH.fetch_ok()
     failures = 0
     for label, site_id in SITES.items():
@@ -249,7 +261,7 @@ def main():
             except Exception as exc:  # the database being down must not stop ingestion
                 jsonlog.event(log, logging.ERROR, "db_write_failed", site=label, error=str(exc))
 
-        # Day 2: publish one message per site to the Redis queue.
+        # Day 2: publish one message per site to the Redis queue (off unless REDIS_HOST is set).
         if os.environ.get("REDIS_HOST"):
             import publisher
 
