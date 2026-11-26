@@ -161,9 +161,17 @@
 - This is the reason for writing an ADR for every decision.
 
 ## Estimation exercise (Kubernetes cluster 24/7, job runs 08:00-20:00, €500/month)
-- (your answer)
+- The job runs 12 hours a day but the cluster runs 24, so half of the cluster time is idle. Half of €500 is about €250 wasted per month.
+- Fix: scale the cluster down to zero or the minimum outside 08:00-20:00 (scheduled scaling), use autoscaling so capacity follows demand, or run the job as a scheduled CronJob so resources exist only while it runs. This is the FinOps idea of matching spend to usage.
 
 ## Day 1 wrap-up questions
 1. DynamoDB: three questions I would ask:
+   - How much data and write traffic do we really have? AirBreda has about 100,000 rows a year, so infinite scaling solves a problem we don't have.
+   - Do we need joins and time-range queries? Yes, correlating NO2 with traffic needs a join, and DynamoDB is built for key lookups.
+   - What does it cost us in skills and lock-in? The team knows SQL, so a relational database is cheaper to learn and more portable.
 2. Row count after 5 years and 10 stations:
+   - 3 components x 8,760 hours x 10 stations x 5 years = about 1.3 million rows (about 2.2 million if all 5 components are stored).
+   - This does not change the database choice. It is small for PostgreSQL, which only starts to slow down at tens of millions of rows, so a relational database with an index on station and timestamp is still the right answer.
 3. Most recent NO2 value, and what a null would look like:
+   - The most recent NO2 value was 17.96 µg/m³ at 09:00 UTC (26 Nov 2026).
+   - A null would be a record with "value": null (or an hour missing from the list). The pipeline keeps it as NULL instead of dropping it or replacing it with 0, flags it, and reports the last valid reading together with its age, so the dashboard shows "data stale" instead of a wrong number.
