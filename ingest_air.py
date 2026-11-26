@@ -30,6 +30,9 @@ import time
 import pandas as pd
 import requests
 
+from dotenv import load_dotenv
+load_dotenv()  # reads PG* settings from .env so the database write switches on
+
 STATION = "NL10240"
 BASE_URL = f"https://api.luchtmeetnet.nl/open_api/stations/{STATION}/measurements"
 
