@@ -47,6 +47,12 @@ SITES = {
 OUTPUT_DIR = Path(os.environ.get("NDW_OUTPUT_DIR", "data/ndw"))
 CSV_FIELDS = ["site", "timestamp", "total_flow", "avg_speed", "lanes", "bad_speed_lanes", "dq_status"]
 
+# Polling interval (required comment): the NDW feed refreshes about once a
+# minute, but the model predicts hourly NO2, so polling every ~5 minutes is
+# plenty. Polling every minute would push 5x more messages with almost
+# identical values, fill the queue and the history file faster, and hit the
+# NDW server far more often than the data justifies.
+
 
 def clean_speed(raw):
     """Bad data handler for NDW speed values.
@@ -181,6 +187,25 @@ def main():
         path = output_path(label, row["timestamp"])
         write_csv(path, row)
         append_history(row)
+
+        # Day 2: publish one message per site to the Redis queue.
+        if os.environ.get("REDIS_HOST"):
+            import publisher
+
+            try:
+                publisher.publish([{
+                    "station_id": site_id,
+                    "site": label,
+                    "source": "NDW",
+                    "timestamp": row["timestamp"],
+                    "total_flow": row["total_flow"],
+                    "avg_speed": row["avg_speed"],
+                    "dq_status": row["dq_status"],
+                }])
+                log.info("Queue: published %s", label)
+            except Exception as exc:  # the queue being down must not stop ingestion
+                log.error("Queue publish failed for %s: %s", label, exc)
+
         log.info("Saved %s", path)
         upload_to_blob(path)
     return 1 if failures == len(SITES) else 0

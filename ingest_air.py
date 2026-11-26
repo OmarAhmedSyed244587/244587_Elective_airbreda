@@ -40,6 +40,12 @@ REQUEST_TIMEOUT = 10  # seconds
 MAX_RETRIES = 3
 BACKOFF_SECONDS = 2  # waits 2s, then 4s between attempts
 
+# Polling interval (required comment): Luchtmeetnet publishes one value per
+# station per HOUR, so we poll once an hour. Polling every minute would not
+# give fresher data; it would fetch the same hour 60 times, push 60 duplicate
+# messages onto the queue, waste free-API quota (fair use is 100 requests per
+# 5 minutes) and risk being rate-limited, for zero extra information.
+
 log = logging.getLogger("ingest_air")
 
 
@@ -92,6 +98,19 @@ def filter_no2_readings(df: pd.DataFrame) -> pd.DataFrame:
     """Keep NO2 rows only. Rows with a null value are KEPT, not dropped."""
     return df[df["component"] == "NO2"].copy()
 
+def to_messages(df: pd.DataFrame, station: str = STATION) -> list[dict]:
+    """NO2 rows -> JSON-ready queue messages. Null values stay null."""
+    messages = []
+    for row in df.itertuples():
+        messages.append(
+            {
+                "station_id": station,
+                "timestamp": row.timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "component": row.component,
+                "value": None if pd.isna(row.value) else float(row.value),
+            }
+        )
+    return messages
 
 def latest_reading(df: pd.DataFrame) -> pd.Series | None:
     """Most recent row by timestamp (may have a null value), or None if empty."""
@@ -130,6 +149,16 @@ def main() -> int:
             log.info("Database: %d new rows stored", new_rows)
         except Exception as exc:  # keep printing the reading even if the DB is down
             log.error("Database write failed: %s", exc)
+            
+    # Day 2: publish the NO2 readings to the Redis queue as well.
+    if os.environ.get("REDIS_HOST"):
+        import publisher
+
+        try:
+            sent = publisher.publish(to_messages(no2))
+            log.info("Queue: %d messages published", sent)
+        except Exception as exc:  # the queue being down must not stop ingestion
+            log.error("Queue publish failed: %s", exc)
 
     print(f"Station:   {STATION}")
     print(f"Component: NO2")

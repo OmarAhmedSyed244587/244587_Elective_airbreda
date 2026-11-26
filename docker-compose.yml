@@ -10,6 +10,8 @@ services:
       dockerfile: Dockerfile
     container_name: air-ingest
     env_file: .env
+    environment:
+      REDIS_HOST: redis
     depends_on: [redis]
     networks: [airbreda]
 
@@ -19,6 +21,8 @@ services:
       dockerfile: Dockerfile.traffic
     container_name: traffic-ingest
     env_file: .env
+    environment:
+      REDIS_HOST: redis
     depends_on: [redis]
     networks: [airbreda]
 

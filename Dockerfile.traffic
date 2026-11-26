@@ -6,6 +6,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY helper_scripts/ helper_scripts/
-COPY ingest_traffic.py db.py ./
+COPY ingest_traffic.py db.py publisher.py ./
 
 CMD ["python", "ingest_traffic.py"]
