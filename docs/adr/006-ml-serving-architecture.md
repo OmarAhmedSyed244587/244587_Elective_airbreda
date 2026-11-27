@@ -16,7 +16,7 @@ What I actually have:
 - NO2 ranges 17.0-33.0 ug/m3 (mean 25.5). Total traffic (sum of the four sites) ranges 186-5,100
   vehicles/hour (mean 2,851).
 - The data covers about one day, so one weather situation.
-- A seventh constraint is the VM: 886 MB RAM (see ADR-005). The serving design has to be tiny.
+- A further constraint is the VM: 886 MB RAM (see ADR-005). The serving design has to be tiny.
 
 ## Decision
 
