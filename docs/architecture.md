@@ -10,7 +10,7 @@ flowchart LR
     USER["Browser / grader"]
 
     subgraph AZ["Azure: resource group airbreda-rg"]
-        subgraph VM["VM airbreda-vm (B2ts_v2, 886 MB RAM + 4 GB swap)<br/>NSG: port 22 and port 8000 only from allowed IPs"]
+            subgraph VM["VM airbreda-vm<br/>NSG: 22 and 8000, allowed IPs only"]
             subgraph NET["Docker network airbreda (restart: unless-stopped)"]
                 AIR["air-ingest<br/>hourly, /health on 8001"]
                 TRF["traffic-ingest<br/>loop every ~10 min, /health on 8002"]
