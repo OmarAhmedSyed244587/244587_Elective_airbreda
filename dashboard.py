@@ -142,21 +142,40 @@ def site(site_id: str):
     return response
 
 
-def fetch_health(url):
-    try:
-        with urllib.request.urlopen(url, timeout=2) as reply:
-            return json.loads(reply.read())
-    except Exception as exc:
-        return {"error": str(exc)}
+HEALTH_TIMEOUT = 5          # seconds; the small VM can be slow while it parses NDW
+HEALTH_GRACE_SECONDS = 300  # on a one-off failure, reuse the last good answer this long
+_health_cache = {}
+
+
+def fetch_health(name, url):
+    """Ask one ingestion container for its /health.
+
+    One failed call (timeout, DNS blip) is retried once; if it still fails we fall
+    back to the last good answer when it is under HEALTH_GRACE_SECONDS old, marked
+    with stale_seconds. Beyond that the container is treated as really down.
+    """
+    last_error = None
+    for _ in range(2):
+        try:
+            with urllib.request.urlopen(url, timeout=HEALTH_TIMEOUT) as reply:
+                data = json.loads(reply.read())
+            _health_cache[name] = (time.time(), data)
+            return data
+        except Exception as exc:
+            last_error = exc
+    jsonlog.event(log, logging.WARNING, "health_fetch_failed", source=name, error=str(last_error))
+    cached = _health_cache.get(name)
+    if cached and time.time() - cached[0] < HEALTH_GRACE_SECONDS:
+        return {**cached[1], "stale_seconds": round(time.time() - cached[0])}
+    return {"error": str(last_error)}
 
 
 @app.get("/health")
 def health():
-    air = fetch_health(AIR_HEALTH_URL)
-    traffic = fetch_health(TRAFFIC_HEALTH_URL)
+    air = fetch_health("luchtmeetnet", AIR_HEALTH_URL)
+    traffic = fetch_health("ndw", TRAFFIC_HEALTH_URL)
     ok = "error" not in air and "error" not in traffic
     return {"status": "ok" if ok else "degraded", "luchtmeetnet": air, "ndw": traffic}
-
 
 PAGE = """<!doctype html>
 <html lang="en">
