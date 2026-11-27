@@ -230,7 +230,7 @@ async function load() {
   document.getElementById("total").textContent = Math.round(first.total_intensity_veh_per_hr) + " veh/h";
 
   const staleNo2 = first.no2_age_minutes > 180;       // air data is hourly
-  const staleTraffic = first.traffic_age_minutes > 20; // traffic every 5 minutes
+  const staleTraffic = first.traffic_age_minutes > 30; // a full cycle takes ~10-15 min on this small VM
   upd.textContent = "NO2 measured " + first.no2_timestamp + " (" + Math.round(first.no2_age_minutes) + " min ago), " +
     "traffic measured " + first.timestamp + " (" + Math.round(first.traffic_age_minutes) + " min ago)" +
     (staleNo2 || staleTraffic ? " - DATA IS STALE: an ingestion service may have stopped." : "");
