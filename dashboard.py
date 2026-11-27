@@ -50,6 +50,8 @@ import db
 import jsonlog
 import predict
 
+from contextlib import asynccontextmanager
+
 log = logging.getLogger("dashboard")
 jsonlog.setup()
 
@@ -59,7 +61,19 @@ CACHE_SECONDS = 30  # one database read serves all four /site calls and page ref
 AIR_HEALTH_URL = os.environ.get("AIR_HEALTH_URL", "http://air-ingest:8001/health")
 TRAFFIC_HEALTH_URL = os.environ.get("TRAFFIC_HEALTH_URL", "http://traffic-ingest:8002/health")
 
-app = FastAPI(title="AirBreda")
+@asynccontextmanager
+async def lifespan(app):
+    """Warm up before serving, so the first visitor after a (re)start does not wait for
+    the database connection and the scikit-learn import on this small VM."""
+    try:
+        load_snapshot()
+        predict.predict(3000, 12)
+    except Exception as exc:
+        jsonlog.event(log, logging.WARNING, "warmup_failed", error=str(exc))
+    yield
+
+
+app = FastAPI(title="AirBreda", lifespan=lifespan)
 _cache = {"at": 0.0, "data": None}
 
 
